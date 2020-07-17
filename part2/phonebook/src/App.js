@@ -1,20 +1,19 @@
-import React, { useState } from 'react'
+import React, { useState, useEffect } from 'react'
 import Filter from './components/Filter'
 import PersonForm from './components/PersonForm'
 import Persons from './components/Persons'
+import PersonsService from './services/persons'
+import Notification from './components/Notification'
+
+let notificationType = null
 
 const App = () => {
 
-  const [persons, setPersons] = useState([
-    { name: 'Arto Hellas', ph_number: '040-123456' },
-    { name: 'Ada Lovelace', ph_number: '39-44-5323523' },
-    { name: 'Dan Abramov', ph_number: '12-43-234345' },
-    { name: 'Mary Poppendieck', ph_number: '39-23-6423122' }
-  ])
-
+  const [ persons, setPersons ] = useState([])
   const [ newName, setNewName ] = useState('')
   const [ newNumber, setNewNumber ] = useState('')
   const [ filter, setFilter ] = useState ('')
+  const [ notificationMessage, setNotificationMessage ] = useState(null)
 
   const handleNameChange = (event) => {
       setNewName (event.target.value)
@@ -28,28 +27,99 @@ const App = () => {
       setFilter (event.target.value)
   }
 
+  const handleNotification = (notification_type, message) => {
+
+    setNewName ('')
+    setNewNumber ('')
+
+    notificationType = notification_type
+    setNotificationMessage (message)
+
+    setTimeout (() => {
+      notificationType = null
+      setNotificationMessage (null)
+    }, 5000)
+
+  }
+
   const addRecord = (event) => {
 
     event.preventDefault()
+    let curr_person
 
-    if (persons.some(person => person.name === newName)) {
-        alert (`${newName} is already added to phonebook`)
+    if (persons.some(person => {
+      curr_person = person
+      return person.name === newName
+    })) 
+    {
+        
+        if (window.confirm(`${newName} is already added to phonebook, replace the old number with a new one?`))
+        {
+          const updated_record = {
+            ...curr_person,
+            number: newNumber
+          }
+
+          PersonsService
+          .modify (updated_record)
+          .then (response => {
+
+            setPersons (persons.map (person => person.name === curr_person.name ? updated_record : person))
+            handleNotification ("success", `Updated ${curr_person.name}`)
+
+          })
+          .catch(err => {
+
+            handleNotification ("error", `Information of ${curr_person.name} has already been removed from the server`)
+
+          })
+          
+        }
+        
         return
     }
 
     const new_record = {
         name: newName,
-        ph_number: newNumber
+        number: newNumber
     }
 
-    setPersons (persons.concat(new_record))
+    PersonsService
+      .add(new_record)
+      .then(response => {
+
+        setPersons(persons.concat(response.data))
+        handleNotification("success", `Added ${new_record.name}`)
+
+      })
+      .catch(err => {
+
+        handleNotification("error", `An error occured. Could not add ${curr_person.name}`)
+
+      })
 
   }
 
+  const effect_hook = () => {
+
+    console.log (persons)
+    PersonsService
+      .getAll()
+      .then(response => {
+        console.log('getAll promise fulfilled')
+        setPersons(response.data)
+      })
+  }
+
+  useEffect (effect_hook, [])
+
   return (
     <div>
+
+      <Notification type={notificationType} message={notificationMessage} />
+
       <h2>Phonebook</h2>
-      
+
       <Filter filter={filter} handleFilterChange={handleFilterChange} />
         
       <h1>add a new</h1>
@@ -62,7 +132,7 @@ const App = () => {
 
       <h2>Numbers</h2>
 
-      <Persons persons={persons} filter={filter} />
+      <Persons setPersons={setPersons} persons={persons} filter={filter} />
 
     </div>
   )
